@@ -53,6 +53,8 @@ import { currentLang, tr } from '@/i18n';
 import { projectChips } from '@/editor/node-renderer/projectTags';
 import { shareViewerAssets, SHARED_VIEWER_ASSET_BOOTSTRAP } from './sharedViewerAssets';
 import { viewerIcons } from './viewerIcons';
+import { buildGanttRows } from '@/editor/gantt/ganttModel';
+import { GANTT_THEMES } from '@/editor/gantt/ganttThemes';
 import { fmtBytes, measureDocument } from '@/utils/mapWeight';
 import bottomCopy from '@/components/bottom-status-bar/bottom-toolbar-copy.json';
 
@@ -1783,6 +1785,7 @@ const VIEWER_JS = String.raw`
     world.appendChild(chipLayer); // 접힘 칩을 마지막에 올려 항상 위에
     updateCount();
     syncOutline(); // 아웃라인 페인이 보이면 함께 갱신 (function 선언 호이스팅)
+    syncGanttSel(); // 간트 칸이 열려 있으면 선택 줄 강조도 함께 (2026-11-27)
     if (typeof mmBox !== 'undefined' && mmBox) syncMinimap(); // 미니맵 — 접기·펼치기·포커스 뒤 다시
   }
 
@@ -4345,6 +4348,398 @@ const VIEWER_JS = String.raw`
     if (outlineVisible()) buildOutline();
   });
 
+  // ── 간트 차트 (읽기 전용, 2026-11-27 사용자 요청: "뷰어에 읽기 전용 간트") ─────────────
+  //   앱 GanttView/TaskListView 와 같은 화면을 맵 아래 칸에 연다. 줄·막대 자료는 내보낼 때 앱의
+  //   buildGanttRows 로 구워 둔 것(DATA.gantt)이라 앱과 같은 줄이 나온다. 막대 끌기는 없다(읽기 전용).
+  //   보기 설정(눈금·배율·숨김·테마·개요·칸 폭)은 앱과 같은 열쇠로 이 브라우저에 기억한다.
+  var GD = DATA.gantt || { rows: [], tasks: [] };
+  var GTHEMES = DATA.ganttThemes || {};
+  var GBox = document.getElementById('mm-gantt');
+  var GBtn = document.getElementById('mm-gantt-btn');
+  var G_SCALES = ['day', 'week', 'month', 'year'];
+  var G_DAY_W = { day: 26, week: 9, month: 3.2, year: 0.9 };
+  var G_ZOOMS = [0.5, 0.67, 0.8, 1, 1.25, 1.5, 2, 3];
+  var G_ROW = 30, G_HEAD = 46;
+  var G_COLS = [['assignee', 1.5], ['start', 1], ['finish', 1], ['duration', 0.7], ['complete', 0.8]];
+  var G_COLW = 5;
+  var G_PREF = 'emm.gantt.prefs', G_H = 'emm.viewer.gantt.h', G_ON = 'emm.viewer.gantt.on';
+  var gPrefs = (function () {
+    var d = { scale: 'day', zoom: 3, showAll: false, theme: 'vivid', details: true, taskW: 240, detailW: 400 };
+    try {
+      var p = JSON.parse(localStorage.getItem(G_PREF) || '{}') || {};
+      return {
+        scale: G_SCALES.indexOf(p.scale) >= 0 ? p.scale : d.scale,
+        zoom: typeof p.zoom === 'number' && p.zoom >= 0 && p.zoom < G_ZOOMS.length ? p.zoom : d.zoom,
+        showAll: typeof p.showAll === 'boolean' ? p.showAll : d.showAll,
+        theme: GTHEMES[p.theme] ? p.theme : d.theme,
+        details: typeof p.details === 'boolean' ? p.details : d.details,
+        taskW: typeof p.taskW === 'number' && p.taskW >= 140 ? Math.min(700, p.taskW) : d.taskW,
+        detailW: typeof p.detailW === 'number' && p.detailW >= 220 ? Math.min(800, p.detailW) : d.detailW
+      };
+    } catch (e) { return d; }
+  })();
+  function gSetPref(p) {
+    for (var k in p) gPrefs[k] = p[k];
+    try { localStorage.setItem(G_PREF, JSON.stringify(gPrefs)); } catch (e) {}
+  }
+  var gView = 'gantt', gFolded = {}, gWho = '*all*', gStatus = 'all', gGrouped = false, gScrollPending = true;
+  function gT(k, v) { var s = MML['g.' + k] || k; return v ? mmFmt(s, v) : s; }
+  function gEsc(x) { return String(x == null ? '' : x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function gAlpha(hex, a) { var n = parseInt(String(hex).slice(1), 16); return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; }
+  // 앱 테마 토큰 (밝게/어둡게)
+  function gTok() {
+    return document.body.classList.contains('mm-dark')
+      ? { surface: '#181A20', surfaceAlt: '#1C1F26', border: '#2A2E38', divider: '#23262E', text: '#E8E6E3', muted: '#A09A90', subtle: '#6B6558', primary: '#F59E0B', primarySoft: '#3B2A0A', primaryBorder: '#F59E0B' }
+      : { surface: '#FFFFFF', surfaceAlt: '#FBF8F3', border: '#E8E0D2', divider: '#EFE8DB', text: '#1F1B16', muted: '#6B6358', subtle: '#958A78', primary: '#D97706', primarySoft: '#FEF3C7', primaryBorder: '#F59E0B' };
+  }
+  // 날짜 (UTC 자정 기준 — 앱 ganttModel 과 같다)
+  var G_DAY = 86400000;
+  function gNum(v) { return Math.round(Date.UTC(+v.slice(0, 4), +v.slice(5, 7) - 1, +v.slice(8, 10)) / G_DAY); }
+  function gStr(n) { return new Date(n * G_DAY).toISOString().slice(0, 10); }
+  function gWd(n) { return new Date(n * G_DAY).getUTCDay(); }
+  function gToday() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function gShort(v, year, full) { if (!v) return ''; return +v.slice(0, 4) === year ? v.slice(5).replace('-', '/') : (full ? v.replace(/-/g, '/') : v.slice(2).replace(/-/g, '/')); }
+  function gTaskStatus(t, today) {
+    if (t.progress === 100) return 'done';
+    var s = t.start || t.end, e = t.end || t.start;
+    if (!s || !e) return 'nodate';
+    if (e < today) return 'late';
+    if (s <= today) return 'doing';
+    return 'todo';
+  }
+  function ganttOn() { return document.body.classList.contains('mm-gantt-on'); }
+  function gVisible() {
+    var rows = GD.rows || [], out = [], i;
+    if (!gPrefs.showAll) {
+      var byId = {};
+      for (i = 0; i < rows.length; i++) byId[rows[i].id] = rows[i];
+      for (i = 0; i < rows.length; i++) {
+        var r = rows[i]; if (!r.dated) continue;
+        var d = 0;
+        for (var p = r.parentId ? byId[r.parentId] : null; p; p = p.parentId ? byId[p.parentId] : null) if (p.dated) d++;
+        out.push({ r: r, depth: d });
+      }
+      return out;
+    }
+    var hide = Infinity;
+    for (i = 0; i < rows.length; i++) {
+      var q = rows[i];
+      if (q.depth > hide) continue;
+      hide = Infinity;
+      out.push({ r: q, depth: q.depth });
+      if (gFolded[q.id] && q.hasChildren) hide = q.depth;
+    }
+    return out;
+  }
+  function gRange(scale, today) {
+    if (!GD.min || !GD.max) return null;
+    var a = Math.min(gNum(GD.min), gNum(today)) - 3, b = Math.max(gNum(GD.max), gNum(today)) + 10;
+    if (scale === 'week') { while (gWd(a) !== 1) a--; }
+    if (scale === 'month') { a = gNum(gStr(a).slice(0, 8) + '01'); b = gNum(gStr(b + 31).slice(0, 8) + '01') - 1; }
+    if (scale === 'year') { a = gNum(gStr(a).slice(0, 4) + '-01-01'); b = gNum(String(+gStr(b).slice(0, 4) + 1) + '-01-01') - 1; }
+    return { a: a, b: b, days: b - a + 1 };
+  }
+  var gScrollEl = null;
+  function gBtnStyle(on, th, T) {
+    return 'font-size:11.5px;padding:3px 9px;border-radius:6px;cursor:pointer;line-height:1.4;font-family:inherit;border:1px solid ' + (on ? th.accent : T.border) +
+      ';background:' + (on ? gAlpha(th.accent, 0.12) : T.surface) + ';color:' + (on ? th.accent : T.text) + ';font-weight:' + (on ? 700 : 500);
+  }
+  function renderGantt() {
+    if (!GBox || !ganttOn()) return;
+    var T = gTok(), th = GTHEMES[gPrefs.theme] || GTHEMES.vivid || { palette: ['#4C6EF5'], accent: '#4C6EF5', today: '#E03131', summary: '#495057', weekend: 'rgba(76,110,245,0.07)' };
+    var today = gToday(), year = new Date().getFullYear();
+    var sep = '<span style="width:1px;height:18px;background:' + T.border + ';margin:0 3px"></span>';
+    var h = [];
+    // 머리줄 — [간트|작업 목록] [일 주 월 년] [－ ＋] [오늘] [개요] [☐ 일정 없는 노드] [테마] ... [✕]
+    h.push('<div class="g-bar" style="display:flex;align-items:center;gap:5px;padding:6px 10px;border-bottom:1px solid ' + T.divider + ';background:linear-gradient(180deg,' + gAlpha(th.accent, 0.08) + ',' + T.surfaceAlt + ');flex-shrink:0;flex-wrap:wrap">');
+    h.push('<span style="font-size:12.5px;font-weight:800;color:' + th.accent + '">▤ ' + gEsc(gT('title')) + '</span>');
+    h.push('<span style="display:flex;margin-left:4px;border:1px solid ' + T.border + ';border-radius:7px;overflow:hidden">');
+    ['gantt', 'tasks'].forEach(function (v) {
+      var on = gView === v;
+      h.push('<button type="button" data-g="view" data-v="' + v + '" data-testid="gantt-view-' + v + '" style="font-size:11.5px;padding:3px 10px;border:none;cursor:pointer;font-family:inherit;background:' + (on ? th.accent : T.surface) + ';color:' + (on ? '#fff' : T.text) + ';font-weight:' + (on ? 700 : 500) + '">' +
+        gEsc(v === 'gantt' ? gT('viewGantt') : gT('viewTasks') + ' ' + (GD.tasks || []).length) + '</button>');
+    });
+    h.push('</span>');
+    if (gView === 'gantt') {
+      h.push(sep);
+      G_SCALES.forEach(function (s) { h.push('<button type="button" data-g="scale" data-v="' + s + '" data-testid="gantt-scale-' + s + '" style="' + gBtnStyle(gPrefs.scale === s, th, T) + '">' + gEsc(gT(s)) + '</button>'); });
+      h.push(sep);
+      h.push('<button type="button" data-g="zoom" data-v="-1" title="' + gEsc(gT('zoomOut')) + '" aria-label="' + gEsc(gT('zoomOut')) + '"' + (gPrefs.zoom === 0 ? ' disabled' : '') + ' style="' + gBtnStyle(false, th, T) + ';padding:3px 8px;font-weight:700">－</button>');
+      h.push('<span data-testid="gantt-zoom" style="font-size:10.5px;color:' + T.muted + ';min-width:34px;text-align:center">' + Math.round(G_ZOOMS[gPrefs.zoom] * 100) + '%</span>');
+      h.push('<button type="button" data-g="zoom" data-v="1" title="' + gEsc(gT('zoomIn')) + '" aria-label="' + gEsc(gT('zoomIn')) + '"' + (gPrefs.zoom === G_ZOOMS.length - 1 ? ' disabled' : '') + ' style="' + gBtnStyle(false, th, T) + ';padding:3px 8px;font-weight:700">＋</button>');
+      h.push('<button type="button" data-g="today" data-testid="gantt-today" style="' + gBtnStyle(false, th, T) + '">' + gEsc(gT('today')) + '</button>');
+      h.push('<button type="button" data-g="details" title="' + gEsc(gT('detailsTip')) + '" style="' + gBtnStyle(gPrefs.details, th, T) + '">' + gEsc(gT('details')) + '</button>');
+      h.push(sep);
+      h.push('<label style="display:flex;align-items:center;gap:4px;font-size:11.5px;cursor:pointer;white-space:nowrap;color:' + T.text + '"><input type="checkbox" data-g="showAll" data-testid="gantt-show-all"' + (gPrefs.showAll ? ' checked' : '') + '>' + gEsc(gT('showAll')) + '</label>');
+      h.push(sep);
+      h.push('<label style="display:flex;align-items:center;gap:4px;font-size:11.5px;color:' + T.muted + '">' + gEsc(gT('theme')) + '<select data-g="theme" data-testid="gantt-theme" style="font-size:11.5px;padding:2px 4px;border-radius:6px;border:1px solid ' + T.border + ';background:' + T.surface + ';color:' + T.text + ';font-family:inherit">');
+      Object.keys(GTHEMES).forEach(function (k) { h.push('<option value="' + k + '"' + (gPrefs.theme === k ? ' selected' : '') + '>' + gEsc(gT('theme.' + k)) + '</option>'); });
+      h.push('</select></label>');
+    }
+    var hint = gView === 'tasks' ? gT('tasksHint') : gT('hintReadOnly');
+    h.push('<span title="' + gEsc(hint) + '" style="flex:1;min-width:8px;font-size:10.5px;color:' + T.subtle + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + gEsc(hint) + '</span>');
+    h.push('<button type="button" data-g="close" data-testid="gantt-dock-close" title="' + gEsc(gT('close')) + '" aria-label="' + gEsc(gT('close')) + '" style="font-size:11.5px;padding:3px 7px;border-radius:6px;cursor:pointer;border:1px solid ' + T.border + ';background:' + T.surface + ';color:' + T.text + '">✕</button>');
+    h.push('</div>');
+    if (gView === 'tasks') h.push(gTasksHtml(T, today, year));
+    else h.push(gChartHtml(T, th, today, year));
+    var keep = gScrollEl ? { l: gScrollEl.scrollLeft, t: gScrollEl.scrollTop } : null;
+    GBox.querySelector('.g-inner').innerHTML = h.join('');
+    gScrollEl = GBox.querySelector('[data-testid="gantt-scroll"]');
+    if (gScrollEl && keep && !gScrollPending) { gScrollEl.scrollLeft = keep.l; gScrollEl.scrollTop = keep.t; }
+    if (gScrollEl && gScrollPending) {
+      gScrollPending = false;
+      var first = GD.min && gNum(GD.min) > gNum(today) ? GD.min : today;
+      gScrollToDay(first);
+    }
+  }
+  var gGeom = null; // { a, dw, leftW, rightW }
+  function gScrollToDay(d) {
+    if (!gScrollEl || !gGeom) return;
+    var x = (gNum(d) - gGeom.a) * gGeom.dw;
+    gScrollEl.scrollLeft = Math.max(0, x - (gScrollEl.clientWidth - gGeom.leftW - gGeom.rightW) / 3);
+  }
+  function gChartHtml(T, th, today, year) {
+    var range = gRange(gPrefs.scale, today);
+    if (!range) return '<div data-testid="gantt-empty" style="padding:18px;font-size:12.5px;color:' + T.muted + ';line-height:1.6">' + gEsc(gT('empty')) + '</div>';
+    var scale = gPrefs.scale, dw = G_DAY_W[scale] * G_ZOOMS[gPrefs.zoom];
+    var leftW = gPrefs.taskW, rightW = gPrefs.details ? gPrefs.detailW : 0;
+    var viewW = GBox.clientWidth || 800;
+    // 좁은 화면(휴대폰) — 작업명·개요 칸이 화면을 다 덮어 막대가 안 보이던 것: 개요 칸은 접고 작업명 칸을 줄인다
+    gGeom = { a: range.a, dw: dw, leftW: leftW, rightW: rightW };
+    if (leftW + rightW > viewW * 0.75) { rightW = 0; leftW = Math.min(leftW, Math.max(120, Math.round(viewW * 0.4))); gGeom.leftW = leftW; gGeom.rightW = 0; }
+    var timelineW = Math.max(range.days * dw, viewW - leftW - rightW);
+    // 눈금
+    var top = [], bottom = [], cur = '', d, s;
+    for (d = range.a; d <= range.b; d++) {
+      s = gStr(d);
+      var yearly = scale === 'month' || scale === 'year';
+      var key = yearly ? s.slice(0, 4) : s.slice(0, 7);
+      if (key !== cur) { top.push({ x: (d - range.a) * dw, w: 0, label: yearly ? key : s.slice(0, 4) + '.' + s.slice(5, 7) }); cur = key; }
+      var md = s.slice(5);
+      if (scale === 'day') { var wd = gWd(d); bottom.push({ x: (d - range.a) * dw, w: dw, label: String(+s.slice(8, 10)), weekend: wd === 0 || wd === 6, today: s === today }); }
+      else if (scale === 'week' && gWd(d) === 1) bottom.push({ x: (d - range.a) * dw, w: dw * 7, label: (+s.slice(5, 7)) + '/' + (+s.slice(8, 10)) });
+      else if (scale === 'month' && s.slice(8, 10) === '01') bottom.push({ x: (d - range.a) * dw, w: 0, label: s.slice(5, 7) });
+      else if (scale === 'year' && (md === '01-01' || md === '04-01' || md === '07-01' || md === '10-01')) bottom.push({ x: (d - range.a) * dw, w: 0, label: 'Q' + ((+s.slice(5, 7) + 2) / 3) });
+    }
+    var i;
+    for (i = 0; i < top.length; i++) top[i].w = (i + 1 < top.length ? top[i + 1].x : timelineW) - top[i].x;
+    if (scale === 'month' || scale === 'year') for (i = 0; i < bottom.length; i++) bottom[i].w = (i + 1 < bottom.length ? bottom[i + 1].x : timelineW) - bottom[i].x;
+    var solid = function (a, base) { return a > 0 ? 'linear-gradient(' + gAlpha(th.accent, a) + ',' + gAlpha(th.accent, a) + '),' + base : base; };
+    var wsum = 0; G_COLS.forEach(function (c) { wsum += c[1]; });
+    var colW = function (w) { return Math.max(36, Math.floor((rightW - 2) * w / wsum)); };
+    var cell = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 6px;font-size:11.5px;flex-shrink:0;box-sizing:border-box;';
+    var rz = function (which) { return '<span data-g="resize" data-v="' + which + '" title="' + gEsc(gT('drag')) + '" style="position:absolute;top:0;bottom:0;width:8px;' + (which === 'task' ? 'right' : 'left') + ':-4px;cursor:col-resize;z-index:5"></span>'; };
+    var vis = gVisible();
+    var h = [];
+    h.push('<div data-testid="gantt-scroll" style="flex:1;min-height:0;overflow:auto;position:relative">');
+    h.push('<div style="width:' + (leftW + timelineW + rightW) + 'px;position:relative">');
+    // 머리글
+    h.push('<div style="position:sticky;top:0;z-index:3;display:flex;height:' + G_HEAD + 'px;background:' + T.surfaceAlt + ';border-bottom:2px solid ' + gAlpha(th.accent, 0.5) + '">');
+    h.push('<div style="position:sticky;left:0;z-index:4;display:flex;align-items:flex-end;width:' + leftW + 'px;flex-shrink:0;background:' + solid(0.10, T.surfaceAlt) + ';border-right:1px solid ' + T.border + ';padding-bottom:7px;font-weight:700;color:' + T.text + '"><span style="' + cell + 'width:' + leftW + 'px">' + gEsc(gT('task')) + '</span>' + rz('task') + '</div>');
+    h.push('<div style="position:relative;width:' + timelineW + 'px;flex-shrink:0;overflow:hidden">');
+    top.forEach(function (k, j) {
+      h.push('<div style="position:absolute;left:' + k.x + 'px;top:0;width:' + k.w + 'px;height:22px;border-left:1px solid ' + T.border + ';font-size:11.5px;font-weight:800;padding:4px 6px;box-sizing:border-box;overflow:hidden;white-space:nowrap;color:' + th.accent + ';background:' + (j % 2 ? gAlpha(th.accent, 0.05) : gAlpha(th.accent, 0.11)) + '">' + (k.w >= 48 ? gEsc(k.label) : '') + '</div>');
+    });
+    bottom.forEach(function (k) {
+      var lab = (scale === 'month' || scale === 'year') && k.w < 18 ? '' : (scale === 'day' && dw < 15 && !k.today && +k.label % 5 !== 1 ? '' : k.label);
+      h.push('<div style="position:absolute;left:' + k.x + 'px;top:22px;' + (k.w ? 'width:' + k.w + 'px;' : '') + 'height:24px;border-left:1px solid ' + T.divider + ';font-size:10px;text-align:' + (scale === 'day' ? 'center' : 'left') + ';padding:' + (scale === 'day' ? '5px 0' : '5px 4px') + ';box-sizing:border-box;color:' + (k.today ? '#fff' : k.weekend ? th.today : T.muted) + ';' + (k.today ? 'background:' + th.today + ';border-radius:4px;font-weight:800;' : 'font-weight:500;') + 'white-space:nowrap;overflow:hidden">' + gEsc(lab) + '</div>');
+    });
+    h.push('</div>');
+    if (rightW > 0) {
+      h.push('<div style="position:sticky;right:0;z-index:4;display:flex;align-items:flex-end;width:' + rightW + 'px;flex-shrink:0;background:' + solid(0.10, T.surfaceAlt) + ';border-left:1px solid ' + T.border + ';padding-bottom:7px;font-weight:700;color:' + T.text + ';box-shadow:-4px 0 8px rgba(0,0,0,0.06)">' + rz('detail'));
+      G_COLS.forEach(function (c) { h.push('<span style="' + cell + 'width:' + colW(c[1]) + 'px;text-align:' + (c[0] === 'assignee' ? 'left' : 'center') + '">' + gEsc(gT('col.' + c[0])) + '</span>'); });
+      h.push('</div>');
+    }
+    h.push('</div>');
+    // 본문 — 주말 음영·월 선·오늘 선
+    h.push('<div style="position:relative">');
+    h.push('<div aria-hidden="true" style="position:absolute;left:' + leftW + 'px;top:0;width:' + timelineW + 'px;height:' + (vis.length * G_ROW) + 'px;pointer-events:none;overflow:hidden">');
+    if (scale === 'day') bottom.forEach(function (k) { if (k.weekend) h.push('<div style="position:absolute;left:' + k.x + 'px;top:0;width:' + k.w + 'px;height:100%;background:' + th.weekend + '"></div>'); });
+    if (scale === 'month' || scale === 'year') bottom.forEach(function (k) { h.push('<div style="position:absolute;left:' + k.x + 'px;top:0;width:1px;height:100%;background:' + T.divider + '"></div>'); });
+    if (gNum(today) >= range.a && gNum(today) <= range.b) h.push('<div data-testid="gantt-today-line" style="position:absolute;left:' + ((gNum(today) - range.a) * dw + dw / 2 - 1) + 'px;top:0;width:2px;height:100%;background:' + th.today + ';opacity:0.8"></div>');
+    h.push('</div>');
+    vis.forEach(function (v, rowIdx) {
+      var r = v.r, sel = SEL === r.id;
+      var color = th.palette[r.branch % th.palette.length];
+      var bs = r.barStart, be = r.barEnd, hasBar = !!bs && !!be;
+      var x = hasBar ? (gNum(bs) - range.a) * dw : 0;
+      var w = hasBar ? Math.max(dw, (gNum(be) - gNum(bs) + 1) * dw) : 0;
+      var milestone = r.dated && r.hasEnd && !r.hasStart;
+      var prog = r.progress || 0;
+      var tint = sel ? 0.16 : rowIdx % 2 ? 0.03 : 0;
+      var sideBg = solid(tint, T.surface);
+      var tip = r.text + (hasBar ? ' · ' + bs + (be !== bs ? ' ~ ' + be : '') : '') + (r.assignees.length ? ' · @' + r.assignees.join(', @') : '') + (r.progress != null ? ' · ' + r.progress + '%' : '');
+      var days = hasBar ? gNum(be) - gNum(bs) + 1 : 0;
+      h.push('<div data-testid="gantt-row" data-gantt-id="' + gEsc(r.id) + '" data-g="row" style="display:flex;height:' + G_ROW + 'px;border-bottom:1px solid ' + T.divider + ';cursor:pointer;' + (tint ? 'background:' + gAlpha(th.accent, tint) + ';' : '') + 'position:relative">');
+      h.push('<div style="position:sticky;left:0;z-index:2;display:flex;align-items:center;width:' + leftW + 'px;flex-shrink:0;background:' + sideBg + ';border-right:1px solid ' + T.border + ';box-shadow:inset 3px 0 0 ' + (r.dated || r.summary ? color : 'transparent') + '">');
+      h.push('<span title="' + gEsc(r.text) + '" style="' + cell + 'width:' + leftW + 'px;display:flex;align-items:center;gap:3px;padding-left:' + (8 + v.depth * 14) + 'px;font-weight:' + (r.summary || r.depth === 0 ? 700 : 500) + ';color:' + (sel ? th.accent : (r.dated || r.summary ? T.text : T.muted)) + '">');
+      if (gPrefs.showAll && r.hasChildren) h.push('<button type="button" data-g="fold" data-v="' + gEsc(r.id) + '" aria-label="' + (gFolded[r.id] ? '+' : '-') + '" style="border:none;background:transparent;color:' + T.muted + ';cursor:pointer;width:14px;padding:0;font-size:10px;flex-shrink:0">' + (gFolded[r.id] ? '▸' : '▾') + '</button>');
+      else h.push('<span style="width:14px;flex-shrink:0"></span>');
+      h.push('<span style="overflow:hidden;text-overflow:ellipsis">' + gEsc(r.text) + '</span></span>' + rz('task') + '</div>');
+      h.push('<div style="position:relative;width:' + timelineW + 'px;flex-shrink:0">');
+      if (hasBar) {
+        if (r.summary) {
+          h.push('<div data-testid="gantt-bar" title="' + gEsc(gT('summary') + ' · ' + bs + ' ~ ' + be) + '" style="position:absolute;left:' + x + 'px;top:11px;width:' + w + 'px;height:7px;background:' + th.summary + ';border-radius:2px;opacity:0.85">' +
+            '<span style="position:absolute;left:0;top:6px;border-left:4px solid transparent;border-right:4px solid transparent;border-top:6px solid ' + th.summary + '"></span>' +
+            '<span style="position:absolute;right:0;top:6px;border-left:4px solid transparent;border-right:4px solid transparent;border-top:6px solid ' + th.summary + '"></span></div>');
+        } else if (milestone) {
+          h.push('<div data-testid="gantt-bar" title="' + gEsc(gT('milestone') + ' · ' + tip) + '" style="position:absolute;left:' + (x + w / 2 - 8) + 'px;top:7px;width:16px;height:16px;transform:rotate(45deg);background:' + color + ';border-radius:3px;box-shadow:' + (sel ? '0 0 0 3px ' + gAlpha(color, 0.35) : '0 1px 3px ' + gAlpha(color, 0.5)) + '"></div>');
+        } else {
+          h.push('<div data-testid="gantt-bar" title="' + gEsc(tip) + '" style="position:absolute;left:' + x + 'px;top:6px;width:' + w + 'px;height:18px;border-radius:6px;box-sizing:border-box;background:linear-gradient(90deg,' + color + ' 0%,' + color + ' ' + prog + '%,' + gAlpha(color, 0.28) + ' ' + prog + '%,' + gAlpha(color, 0.28) + ' 100%);border:1px solid ' + color + ';box-shadow:' + (sel ? '0 0 0 2px ' + gAlpha(color, 0.35) : '0 1px 2px ' + gAlpha(color, 0.35)) + ';display:flex;align-items:center;overflow:hidden">' +
+            (w >= 46 && r.progress != null ? '<span style="font-size:9.5px;font-weight:800;color:' + (prog >= 40 ? '#fff' : color) + ';padding-left:6px;pointer-events:none;' + (prog >= 40 ? 'text-shadow:0 1px 1px rgba(0,0,0,0.25)' : '') + '">' + prog + '%</span>' : '') + '</div>');
+        }
+        if (!r.summary) h.push('<span style="position:absolute;left:' + (x + Math.max(w, milestone ? 12 : 0) + 6) + 'px;top:8px;font-size:10.5px;color:' + T.muted + ';white-space:nowrap;pointer-events:none">' + gEsc(r.text + (!rightW && r.assignees.length ? ' · ' + r.assignees.map(function (a) { return '@' + a; }).join(' ') : '')) + '</span>');
+      }
+      h.push('</div>');
+      if (rightW > 0) {
+        h.push('<div style="position:sticky;right:0;z-index:2;display:flex;align-items:center;width:' + rightW + 'px;flex-shrink:0;background:' + sideBg + ';border-left:1px solid ' + T.border + ';box-shadow:-4px 0 8px rgba(0,0,0,0.04)">' + rz('detail'));
+        G_COLS.forEach(function (c) {
+          var k = c[0], val = '';
+          if (k === 'assignee') val = r.assignees.join(', ');
+          else if (k === 'start') val = gShort(r.summary ? r.barStart : r.start, year);
+          else if (k === 'finish') val = gShort(r.summary ? r.barEnd : r.end, year);
+          else if (k === 'duration') val = hasBar && (r.dated || r.summary) ? gT('durDays', { n: days }) : '';
+          else val = r.progress != null ? r.progress + '%' : '';
+          var done = k === 'complete' && prog === 100;
+          h.push('<span data-gantt-col="' + k + '"' + (k === 'assignee' ? ' title="' + gEsc(r.assignees.join(', ')) + '"' : '') + ' style="' + cell + 'width:' + colW(c[1]) + 'px;text-align:' + (k === 'assignee' ? 'left' : 'center') + ';color:' + (done ? '#2B8A3E' : T.muted) + ';font-weight:' + (done ? 700 : 400) + '">' + gEsc(val) + '</span>');
+        });
+        h.push('</div>');
+      }
+      h.push('</div>');
+    });
+    h.push('</div></div></div>');
+    return h.join('');
+  }
+  var G_STATUS = { done: ['#E3F5E8', '#1E7B3A'], late: ['#FDE7E5', '#B42318'], doing: ['#FFF1DE', '#B5560B'], todo: ['#E8F0FD', '#2558B5'], nodate: ['#EEEEEE', '#666666'] };
+  function gTasksHtml(T, today, year) {
+    var tasks = GD.tasks || [];
+    var people = {}, none = 0;
+    tasks.forEach(function (k) { if (!k.assignees.length) none++; k.assignees.forEach(function (a) { people[a.name] = (people[a.name] || 0) + 1; }); });
+    var names = Object.keys(people).sort(function (a, b) { return a.localeCompare(b); });
+    var sorted = tasks.slice().sort(function (a, b) { var as = a.start || a.end || '9999', bs = b.start || b.end || '9999'; return as < bs ? -1 : as > bs ? 1 : 0; });
+    var pass = function (k) {
+      if (gStatus !== 'all' && gTaskStatus(k, today) !== gStatus) return false;
+      if (gWho === '*all*') return true;
+      if (gWho === '*none*') return k.assignees.length === 0;
+      return k.assignees.some(function (a) { return a.name === gWho; });
+    };
+    var shown = sorted.filter(pass);
+    var groups = gGrouped
+      ? names.map(function (n) { return { label: '@' + n, items: shown.filter(function (k) { return k.assignees.some(function (a) { return a.name === n; }); }) }; })
+          .concat([{ label: gT('unassigned'), items: shown.filter(function (k) { return !k.assignees.length; }) }]).filter(function (g) { return g.items.length; })
+      : [{ label: '', items: shown }];
+    var chip = function (key, label, n) {
+      var on = gWho === key;
+      return '<button type="button" data-g="who" data-v="' + gEsc(key) + '" data-testid="task-filter" style="font-size:11.5px;padding:3px 9px;border-radius:12px;cursor:pointer;white-space:nowrap;font-family:inherit;border:1px solid ' + (on ? T.primaryBorder : T.border) + ';background:' + (on ? T.primarySoft : T.surface) + ';color:' + (on ? T.primary : T.text) + ';font-weight:' + (on ? 700 : 500) + '">' + gEsc(label) + ' <span style="color:' + T.muted + ';font-weight:500">' + n + '</span></button>';
+    };
+    var h = [];
+    h.push('<div data-testid="task-list" style="flex:1;min-height:0;display:flex;flex-direction:column">');
+    h.push('<div style="display:flex;align-items:center;gap:5px;padding:7px 10px;border-bottom:1px solid ' + T.divider + ';flex-wrap:wrap;flex-shrink:0">');
+    h.push(chip('*all*', gT('all'), tasks.length));
+    names.forEach(function (n) { h.push(chip(n, '@' + n, people[n])); });
+    if (none) h.push(chip('*none*', gT('unassigned'), none));
+    h.push('<span style="flex:1"></span><select data-g="status" data-testid="task-status" style="font-size:11.5px;padding:3px 6px;border-radius:6px;border:1px solid ' + T.border + ';background:' + T.surface + ';color:' + T.text + ';font-family:inherit">');
+    h.push('<option value="all"' + (gStatus === 'all' ? ' selected' : '') + '>' + gEsc(gT('statusAll')) + '</option>');
+    ['late', 'doing', 'todo', 'done', 'nodate'].forEach(function (st) { h.push('<option value="' + st + '"' + (gStatus === st ? ' selected' : '') + '>' + gEsc(gT('status.' + st)) + '</option>'); });
+    h.push('</select><label style="display:flex;align-items:center;gap:4px;font-size:11.5px;cursor:pointer;color:' + T.text + '"><input type="checkbox" data-g="group"' + (gGrouped ? ' checked' : '') + '>' + gEsc(gT('groupByAssignee')) + '</label></div>');
+    if (!tasks.length) { h.push('<div data-testid="task-empty" style="padding:18px;font-size:12.5px;color:' + T.muted + ';line-height:1.6">' + gEsc(gT('tasksEmpty')) + '</div></div>'); return h.join(''); }
+    var head = 'position:sticky;top:0;background:' + T.surfaceAlt + ';z-index:1;text-align:left;font-weight:700;color:' + T.muted + ';font-size:11.5px;padding:7px 8px;border-bottom:1px solid ' + T.border + ';white-space:nowrap';
+    var td = 'padding:6px 8px;font-size:12px;border-bottom:1px solid ' + T.divider + ';vertical-align:top';
+    h.push('<div style="flex:1;min-height:0;overflow:auto"><table style="border-collapse:collapse;width:100%;min-width:640px"><thead><tr>');
+    h.push('<th style="' + head + ';width:38%">' + gEsc(gT('task')) + '</th><th style="' + head + '">' + gEsc(gT('assignee')) + '</th><th style="' + head + '">' + gEsc(gT('start')) + '</th><th style="' + head + '">' + gEsc(gT('end')) + '</th><th style="' + head + ';width:110px">' + gEsc(gT('progress')) + '</th><th style="' + head + '">' + gEsc(gT('statusCol')) + '</th></tr></thead><tbody>');
+    groups.forEach(function (g) {
+      if (g.label) h.push('<tr><td colspan="6" style="' + td + ';background:' + T.surfaceAlt + ';font-weight:700;color:' + T.text + '">' + gEsc(g.label) + ' <span style="color:' + T.muted + ';font-weight:500">' + g.items.length + '</span></td></tr>');
+      g.items.forEach(function (k) {
+        var st = gTaskStatus(k, today), sel = SEL === k.id;
+        h.push('<tr data-testid="task-row" data-task-id="' + gEsc(k.id) + '" data-g="row" data-gantt-id="' + gEsc(k.id) + '" style="cursor:pointer;' + (sel ? 'background:' + T.primarySoft : '') + '">');
+        h.push('<td style="' + td + '"><div style="font-weight:600;color:' + (sel ? T.primary : T.text) + '">' + gEsc(k.text) + '</div>' + (k.path ? '<div style="font-size:10.5px;color:' + T.subtle + ';margin-top:1px">' + gEsc(k.path) + '</div>' : '') + '</td>');
+        h.push('<td style="' + td + ';color:' + T.muted + '">' + gEsc(k.assignees.map(function (a) { return '@' + a.name; }).join(', ')) + '</td>');
+        h.push('<td style="' + td + ';color:' + T.muted + ';white-space:nowrap">' + gEsc(gShort(k.start, year, true)) + '</td><td style="' + td + ';color:' + T.muted + ';white-space:nowrap">' + gEsc(gShort(k.end, year, true)) + '</td>');
+        h.push('<td style="' + td + '">' + (k.progress != null ? '<div style="display:flex;align-items:center;gap:6px"><div style="flex:1;height:6px;border-radius:3px;background:' + T.divider + ';overflow:hidden"><div style="width:' + k.progress + '%;height:100%;background:#E0782A"></div></div><span style="font-size:11px;color:' + T.muted + ';width:32px;text-align:right">' + k.progress + '%</span></div>' : '') + '</td>');
+        h.push('<td style="' + td + '"><span data-testid="task-status-badge" style="font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:9px;background:' + G_STATUS[st][0] + ';color:' + G_STATUS[st][1] + ';white-space:nowrap">' + gEsc(gT('status.' + st)) + '</span></td></tr>');
+      });
+    });
+    if (!shown.length) h.push('<tr><td colspan="6" style="' + td + ';color:' + T.muted + ';padding:16px">' + gEsc(gT('noMatch')) + '</td></tr>');
+    h.push('</tbody></table></div></div>');
+    return h.join('');
+  }
+  // 맵에서 선택이 바뀌면 간트 줄 강조도 따라간다 (render() 끝에서 부른다 — 함수 선언 호이스팅)
+  function syncGanttSel() { if (ganttOn()) renderGantt(); }
+  function gDockH() {
+    var max = Math.max(160, Math.round(window.innerHeight * (isCompact() ? 0.5 : 0.75)));
+    var v = 300; try { v = parseInt(localStorage.getItem(G_H) || '', 10) || (isCompact() ? 240 : 300); } catch (e) {}
+    return Math.max(140, Math.min(max, v));
+  }
+  function setGantt(on) {
+    if (!GBox) return;
+    document.body.classList.toggle('mm-gantt-on', on);
+    GBox.hidden = !on;
+    if (GBtn) { GBtn.setAttribute('aria-pressed', on ? 'true' : 'false'); GBtn.classList.toggle('active', on); }
+    try { localStorage.setItem(G_ON, on ? '1' : '0'); } catch (e) {}
+    if (on) { GBox.style.height = gDockH() + 'px'; gScrollPending = true; renderGantt(); }
+    if (minimapOn()) syncMinimap();
+  }
+  if (GBox) {
+    if (GBtn) GBtn.addEventListener('click', function () { setGantt(!ganttOn()); });
+    GBox.addEventListener('click', function (e) {
+      var t = e.target.closest ? e.target.closest('[data-g]') : null;
+      if (!t) return;
+      var g = t.getAttribute('data-g'), v = t.getAttribute('data-v');
+      if (g === 'view') { gView = v; gScrollPending = v === 'gantt'; renderGantt(); }
+      else if (g === 'scale') { gSetPref({ scale: v }); gScrollPending = true; renderGantt(); }
+      else if (g === 'zoom') { gSetPref({ zoom: Math.max(0, Math.min(G_ZOOMS.length - 1, gPrefs.zoom + (+v))) }); gScrollPending = true; renderGantt(); }
+      else if (g === 'today') gScrollToDay(gToday());
+      else if (g === 'details') { gSetPref({ details: !gPrefs.details }); renderGantt(); }
+      else if (g === 'close') setGantt(false);
+      else if (g === 'fold') { e.stopPropagation(); if (gFolded[v]) delete gFolded[v]; else gFolded[v] = 1; renderGantt(); }
+      else if (g === 'who') { gWho = v; renderGantt(); }
+      else if (g === 'row') { var id = t.getAttribute('data-gantt-id'); if (id) focusNodeFromOutline(id); }
+    });
+    GBox.addEventListener('change', function (e) {
+      var g = e.target.getAttribute && e.target.getAttribute('data-g');
+      if (g === 'showAll') { gSetPref({ showAll: !!e.target.checked }); renderGantt(); }
+      else if (g === 'theme') { gSetPref({ theme: e.target.value }); renderGantt(); }
+      else if (g === 'status') { gStatus = e.target.value; renderGantt(); }
+      else if (g === 'group') { gGrouped = !!e.target.checked; renderGantt(); }
+    });
+    // 칸 폭 조절 — [작업명] 오른쪽 경계, [개요] 왼쪽 경계 (앱과 같다)
+    var gSize = null;
+    GBox.addEventListener('pointerdown', function (e) {
+      var t = e.target.closest ? e.target.closest('[data-g="resize"]') : null;
+      if (!t) return;
+      e.preventDefault(); e.stopPropagation();
+      var which = t.getAttribute('data-v');
+      gSize = { which: which, x0: e.clientX, w0: which === 'task' ? gPrefs.taskW : gPrefs.detailW };
+    });
+    window.addEventListener('pointermove', function (e) {
+      if (!gSize) return;
+      var dx = e.clientX - gSize.x0;
+      if (gSize.which === 'task') gSetPref({ taskW: Math.max(140, Math.min(700, Math.round(gSize.w0 + dx))) });
+      else gSetPref({ detailW: Math.max(220, Math.min(800, Math.round(gSize.w0 - dx))) });
+      renderGantt();
+    });
+    window.addEventListener('pointerup', function () { gSize = null; });
+    // 위 경계를 끌어 높이 조절
+    var gGrip = GBox.querySelector('.g-grip'), gDrag = null;
+    gGrip.addEventListener('pointerdown', function (e) {
+      e.preventDefault(); gDrag = { y: e.clientY, h: GBox.getBoundingClientRect().height };
+      gGrip.setPointerCapture(e.pointerId);
+    });
+    gGrip.addEventListener('pointermove', function (e) {
+      if (!gDrag) return;
+      var max = Math.max(160, Math.round(window.innerHeight * 0.75));
+      var nh = Math.max(140, Math.min(max, Math.round(gDrag.h - (e.clientY - gDrag.y))));
+      GBox.style.height = nh + 'px';
+    });
+    gGrip.addEventListener('pointerup', function () {
+      if (!gDrag) return; gDrag = null;
+      try { localStorage.setItem(G_H, String(Math.round(GBox.getBoundingClientRect().height))); } catch (e) {}
+      renderGantt(); if (minimapOn()) syncMinimap();
+    });
+    window.addEventListener('resize', function () { if (ganttOn()) renderGantt(); });
+    try { if (localStorage.getItem(G_ON) === '1') setGantt(true); } catch (e) {}
+  }
+
   // 단축키 — 앱과 같다: Alt+H 미니맵 · Alt+F 선택 노드 보기 · H Pan 모드 (글 입력 중에는 쓰지 않는다)
   document.addEventListener('keydown', function (e) {
     var t = e.target, tag = t && t.tagName ? t.tagName.toLowerCase() : '';
@@ -5046,6 +5441,13 @@ const VIEWER_CSS = `
   #mm-mm-helpdlg .mm-dlg-close { height: 34px; padding: 0 16px; border: 1px solid #E8E0D2; border-radius: 7px; background: #FBF8F3; color: #1F1B16; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
   #mm-mm-helpdlg .mm-dlg-close:hover { background: #F3ECDD; }
   #mm-lists { top: 64px; }
+  /* 읽기 전용 간트 칸 — 앱처럼 편집(맵) 영역 아래, 위 경계를 끌어 높이 조절 */
+  #mm-gantt { position: relative; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; border-top: 1px solid #E8E0D2; background: #FFFFFF; color: #1F1B16; font-size: 12px; }
+  #mm-gantt[hidden] { display: none; }
+  #mm-gantt .g-inner { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  #mm-gantt .g-grip { position: absolute; left: 0; right: 0; top: -4px; height: 8px; cursor: row-resize; z-index: 5; touch-action: none; }
+  #mm-gantt button:disabled { opacity: .45; cursor: default; }
+  body.mm-dark #mm-gantt { background: #181A20; border-color: #2A2E38; color: #E8E6E3; }
   #mm-note { top: 68px; }
   /* 다크 — 앱 다크 토큰 */
   body.mm-dark header { background: #181A20; border-color: #2A2E38; color: #E8E6E3; }
@@ -5169,6 +5571,15 @@ function viewerStrings(): Record<string, string> {
     out['mm.help.' + row + '.body'] = tr(`editor.minimap.help.${row}.body`);
   }
   out.closeApp = tr('common.close');
+  // 간트 (앱 editor.gantt.* 그대로)
+  for (const k of ['title', 'open', 'close', 'viewGantt', 'viewTasks', 'day', 'week', 'month', 'year', 'zoomIn', 'zoomOut', 'today',
+    'details', 'detailsTip', 'showAll', 'theme', 'hintReadOnly', 'tasksHint', 'empty', 'task', 'drag', 'summary', 'milestone', 'durDays',
+    'col.assignee', 'col.start', 'col.finish', 'col.duration', 'col.complete', 'all', 'unassigned', 'statusAll', 'groupByAssignee',
+    'tasksEmpty', 'assignee', 'start', 'end', 'progress', 'statusCol', 'noMatch',
+    'status.done', 'status.late', 'status.doing', 'status.todo', 'status.nodate',
+    'theme.vivid', 'theme.ocean', 'theme.forest', 'theme.sunset', 'theme.pastel', 'theme.grey']) {
+    out['g.' + k] = tr('editor.gantt.' + k);
+  }
   return out;
 }
 
@@ -5202,6 +5613,12 @@ export function buildStandaloneHtml(
   // 왼쪽 아래 상태줄 — 앱 하단 상태바와 같은 글 (2026-11-27). 문서 무게는 화면용 사본이 아닌 원본으로 죨다.
   const statusWeight = measureDocument(map);
   const statusNodes = countMapNodes(map);
+  // 읽기 전용 간트 (2026-11-27) — 앱과 같은 줄을 앱의 buildGanttRows 로 구워 싣는다.
+  // 일정·담당자·진척이 하나도 없는 맵은 빈 자료만 (파일이 커지지 않게).
+  const ganttRaw = buildGanttRows(map);
+  const ganttData = ganttRaw.min || ganttRaw.tasks.length
+    ? { rows: ganttRaw.min ? ganttRaw.rows : [], min: ganttRaw.min, max: ganttRaw.max, tasks: ganttRaw.tasks }
+    : { rows: [], tasks: [] };
   // 다시 불러올 원본(메타)은 손대지 않은 맵 — 아래 화면용 사본의 자동 태그가 문서에 섞이지 않게
   const metaSource = metaMap ?? map;
   if (metaMap) captureExportGuard(metaMap);
@@ -5325,6 +5742,8 @@ export function buildStandaloneHtml(
     })),
     // 연결선 (2026-09-22) — 뷰어가 drawConnectors 로 같은 기하로 그린다
     connectors: map.connectors?.length ? map.connectors : undefined,
+    gantt: ganttData,
+    ganttThemes: GANTT_THEMES,
   };
 
   const exportedAt = new Date().toISOString().slice(0, 16).replace('T', ' ');
@@ -5386,6 +5805,9 @@ export function buildStandaloneHtml(
     <button id="mm-outline-split" class="icon" type="button" title="${A('splitOpen')}" aria-label="${A('splitOpen')}" aria-pressed="false">${IC.split}</button>
     <button id="mm-dark" class="icon" type="button" title="${escapeHtml(VS.toDarkApp)}" aria-label="${escapeHtml(VS.toDarkApp)}">${IC.moon}</button>
   </span>
+  <span class="mm-group" role="group" aria-label="${escapeHtml(VS['g.title'])}" data-group="gantt">
+    <button id="mm-gantt-btn" class="icon" type="button" data-testid="view-gantt" title="${escapeHtml(VS['g.open'])}" aria-label="${escapeHtml(VS['g.title'])}" aria-pressed="false">${IC.gantt}</button>
+  </span>
   <span class="mm-group" role="group" aria-label="${escapeHtml(VS.groupLists)}" data-group="lists">
     <button id="mm-list-links" class="icon" type="button" data-list="links" title="${escapeHtml(VS.sideLink)}" aria-label="${escapeHtml(VS.sideLink)}" aria-expanded="false">${IC.link}</button>
     <button id="mm-list-files" class="icon" type="button" data-list="files" title="${escapeHtml(VS.sideAttach)}" aria-label="${escapeHtml(VS.sideAttach)}" aria-expanded="false" data-testid="viewer-lists-btn">${IC.attach}</button>
@@ -5435,6 +5857,7 @@ export function buildStandaloneHtml(
   <h2 id="mm-note-title"></h2>
   <div id="mm-note-body"></div>
 </div>
+<div id="mm-gantt" data-testid="gantt-dock" hidden><div class="g-grip" title="${escapeHtml(VS['g.drag'])}"></div><div class="g-inner" data-testid="gantt-view"></div></div>
 <footer id="mm-bottombar">
   <span id="mm-status" title="${escapeHtml(statusText + '\n' + tr('shell.status.weightTip') + '\n' + footerText)}">
     <span class="mm-dot" aria-hidden="true"></span>

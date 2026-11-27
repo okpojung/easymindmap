@@ -49,6 +49,8 @@ export function viewerIcons(): Record<string, string> {
     // 상단 — 보기 묶음 (앱 TopToolbar: 22px)
     outline: icon(X.Outline, 22), mindmap: icon(X.MindMap, 22), split: SPLIT_SVG,
     moon: icon(X.Moon, 22), sun: icon(X.Sun, 22),
+    // 상단 — 간트 (앱 TopToolbar 간트 묶음과 같은 그림)
+    gantt: icon(X.Gantt, 22),
     // 상단 — 목록 묶음 (앱 왼쪽 레일: 21px, MD 는 글자)
     link: icon(X.Link, 21), attach: icon(X.Paperclip, 21), note: icon(X.Note, 21),
     // 상단 — 펼치기/접기

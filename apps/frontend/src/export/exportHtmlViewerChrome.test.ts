@@ -8,6 +8,7 @@ const map: SampleMap = {
   title: 'Viewer chrome', canvasMode: 'auto',
   root: { id: 'root', text: 'Root', colorKey: 'root' },
   branches: [{ id: 'a', text: 'Child with link', colorKey: 'l1A', side: 'right',
+    project: { start: '2026-12-01', end: '2026-12-05', progress: 40, assignees: [{ name: 'Kim' }] },
     links: [{ url: 'https://example.com', label: 'ex' }],
     notes: [{ id: 'n1', type: 'paragraph', text: 'memo' }] }],
 } as unknown as SampleMap;
@@ -15,11 +16,11 @@ const html = buildStandaloneHtml(map, 'process-tree-right');
 const idx = (id: string) => html.indexOf(`id="${id}"`);
 
 // 머리말: 로고 · 제목 상자 · 검색 | 보기 · 목록(링크·첨부·MD·노트) · 펼치기/접기 — 이 순서
-const order = ['mm-brand', 'mm-title', 'mm-search', 'mm-view-toggle', 'mm-outline-split', 'mm-dark',
+const order = ['mm-brand', 'mm-title', 'mm-search', 'mm-view-toggle', 'mm-outline-split', 'mm-dark', 'mm-gantt-btn',
   'mm-list-links', 'mm-list-files', 'mm-list-md', 'mm-list-notes', 'mm-expand', 'mm-collapse'];
 order.forEach((id) => assert(idx(id) > 0, 'missing #' + id));
 for (let i = 1; i < order.length; i++) assert(idx(order[i - 1]) < idx(order[i]), 'header order ' + order[i - 1] + ' < ' + order[i]);
-assert((html.match(/class="mm-group"/g) ?? []).length === 3, 'three header groups');
+assert((html.match(/class="mm-group"/g) ?? []).length === 4, 'four header groups (view, gantt, lists, fold)');
 
 // 아래 막대: 왼쪽 상태(앱 문구 + 내보내기 정보) · 오른쪽 − 100% + 미니맵 | Pan · 선택 노드 · 맞추기 · 전체화면
 const bottom = ['mm-status', 'mm-zoom-out', 'mm-zoom-pct', 'mm-zoom-in', 'mm-minimap-btn', 'mm-pan', 'mm-center', 'mm-fit', 'mm-fullscreen'];
@@ -41,4 +42,9 @@ assert(/<link rel="stylesheet" href="https:\/\/cdn\.jsdelivr\.net\/gh\/orioncact
 assert(html.includes("lengthAdjust', 'spacingAndGlyphs'"), 'over-wide line squeeze');
 assert(html.includes('function canvasWheel(e, atCenter)'), 'app wheel behaviour');
 assert(!/<header>[\s\S]*?id="mm-lists-btn"/.test(html), 'old single lists button removed');
+// 읽기 전용 간트 — 앱 buildGanttRows 로 구운 줄 · 앱 테마 · 아래 칸
+const ganttJson = html.slice(html.indexOf('window.__MINDMAP__'));
+assert(/"gantt":\{"rows":\[\{/.test(ganttJson) && ganttJson.includes('"barStart":"2026-12-01"') && ganttJson.includes('"ganttThemes"'), 'gantt rows baked');
+assert(idx('mm-gantt') > idx('mm-main') && idx('mm-gantt') < idx('mm-bottombar'), 'gantt dock between canvas and status bar');
+assert(!/onChangeDates|data-testid="gantt-handle/.test(html), 'gantt is read-only');
 console.log('PASS viewer chrome: header groups, bottom bar, minimap window, app icons, font fit, wheel');

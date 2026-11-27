@@ -9,7 +9,8 @@ export const PATHS: Record<string, string> = {
   "study": "/stories/study",
   "travel": "/stories/travel",
   "brand": "/about/brand",
-  "publishing": "/about/content"
+  "publishing": "/about/content",
+  "solo-privacy": "/solo/privacy"
 };
 /** Curated approved public copy, not automatically synced account data. */
 export const GUIDES: Record<string, Guide> = {
@@ -75,6 +76,13 @@ export const GUIDES: Record<string, Guide> = {
     "title": "작성은 쉽게, 공개는 확인하고.",
     "description": "다음 내용은 운영 설계 제안입니다. 이 시안에 실제 글 저장, 로그인, 게시판이나 자동 발행 기능은 구현되어 있지 않습니다.",
     "body": "<h2>문서함의 homepage 맵을 콘텐츠 원본으로.</h2><p>기존 “easymindmap homepage” 맵의 Markdown·Mindmap·EasyMindmap 가지를 교육 콘텐츠의 뼈대로 사용합니다. 첫 화면에는 편집한 짧은 요약을, 하위 상세 페이지에는 충분한 설명을 담는 방식입니다.</p><h2>전체 맵을 첫 화면에 그대로 넣지 않는 이유.</h2><p>마인드맵에 익숙하지 않은 방문자에게 큰 맵과 긴 기사 목록은 또 다른 학습 과제가 될 수 있습니다. 홈페이지 자체가 맵 사용법을 요구하지 않도록, 기본 화면은 읽기 쉬운 웹 콘텐츠로 제공합니다. 맵 보기는 원한다면 보조 링크로 연결합니다.</p><h2>권장 발행 흐름</h2><ol><li>별도로 지정한 홈페이지용 맵에서 초안을 편집합니다.</li><li>AI가 공개 대상 노드만 추출하고 문구·링크·개인 정보를 검토합니다.</li><li>미리보기에서 내용과 디자인을 확인합니다.</li><li>승인한 스냅샷만 버전을 남겨 배포합니다.</li></ol><div class=\"callout\">문서함 전체를 공개 API로 열거나 개인 계정 토큰을 브라우저에 넣지 않습니다. 인증된 서버 측 또는 빌드 단계에서 허용된 노드만 추출하고, 실패하면 마지막 승인본을 유지하도록 설계합니다.</div><h2>게시글 작성과 홈페이지 수정은 분리합니다.</h2><p>공지·활용 팁처럼 운영자만 글을 쓰는 영역이면 간단한 글 작성 화면을 붙이는 방식을 먼저 검토합니다. 방문자 회원가입·댓글·첨부·검색까지 포함한 공개 게시판은 별도 기능입니다. 스팸 방지, 권한, 파일 검사, 백업, 삭제 정책을 설계한 뒤 연결해야 합니다.</p><p>운영자에게는 “새 글 쓰기 → 미리보기 → 발행”만 보이게 하고, 코드·테마·배포 설정은 노출하지 않는 구성을 권합니다.</p>"
+  },
+  "solo-privacy": {
+    "category": "EasyMindMap Solo",
+    "eyebrow": "Privacy Policy",
+    "title": "EasyMindMap Solo 개인정보처리방침",
+    "description": "Solo는 로그인·서버 없이 내 PC에서만 동작하며, 맵 내용과 개인정보를 수집하거나 전송하지 않습니다.",
+    "body": "<p class=\"source-line\">시행일: 2026-11-27 · 운영: (주)에이치앤지라이프 (HNGLife) · 문의: <a class=\"textlink\" href=\"mailto:ok@baro.pro\">ok@baro.pro</a></p><h2>1. 요약</h2><p>EasyMindMap Solo(이하 \"Solo\")는 사용자의 PC에서만 동작하는 Chrome 확장 프로그램입니다. Solo는 사용자의 개인정보나 맵 내용을 수집하거나 서버로 전송하지 않습니다.</p><h2>2. 처리하는 정보와 저장 위치</h2><ul><li><strong>사용자가 만든 맵 내용</strong>(노드·노트·사진·첨부): 사용자가 직접 고른 파일(.emm.html 등)에만 저장됩니다.</li><li><strong>편집 중 기기 복구본</strong>: 비정상 종료에 대비해 이 브라우저의 IndexedDB(사용자 기기 안)에 저장됩니다. 암호화 HTML에서 풀어 연 문서는 복구본을 만들지 않습니다.</li><li><strong>화면 설정</strong>(웹 AI 패널 설정, 미니맵 위치 등): 이 브라우저의 localStorage에 저장됩니다.</li></ul><p>위 정보는 사용자 기기 밖으로 전송되지 않으며, 회사는 이에 접근할 수 없습니다. 암호는 저장하지 않습니다.</p><h2>3. 외부 전송·제3자 제공</h2><ul><li>Solo 확장 프로그램은 네트워크 통신을 하지 않습니다(외부 연결 차단 보안 정책 적용). Solo가 저장·내보내는 HTML 파일도 외부 자원을 불러오지 않습니다.</li><li>웹 AI 기능은 질문을 클립보드에 복사할 뿐이며, AI 사이트에 붙여넣는 것은 사용자가 직접 합니다. 붙여넣은 내용은 해당 AI 서비스의 정책을 따릅니다. 'AI 열기' 버튼은 해당 사이트를 새 탭으로 열기만 합니다.</li><li>광고·분석·추적 도구를 사용하지 않으며, 정보를 판매하거나 제3자에게 제공하지 않습니다.</li></ul><h2>4. 삭제 방법</h2><ul><li>맵 파일: 사용자가 저장한 파일을 삭제하면 됩니다.</li><li>기기 복구본: 맵을 파일로 저장하면 해당 복구본은 자동으로 지워집니다.</li><li>복구본·설정 전체: 확장 프로그램을 삭제하거나 브라우저의 사이트 데이터를 삭제하면 함께 삭제됩니다.</li></ul><h2>5. 변경</h2><p>이 방침이 바뀌면 이 페이지에 시행일과 함께 게시합니다.</p><h2>EasyMindMap Solo Privacy Policy (English)</h2><p>Effective 2026-11-27 · Operator: HNG Life Co., Ltd. (HNGLife) · Contact: <a class=\"textlink\" href=\"mailto:ok@baro.pro\">ok@baro.pro</a></p><ul><li><strong>Summary</strong> — EasyMindMap Solo is a Chrome extension that runs only on your computer. It does not collect your personal information or map content and does not send it to any server.</li><li><strong>Data and storage</strong> — Map content is stored only in files you choose. An editing recovery copy is kept in this browser's IndexedDB (documents opened from encrypted HTML are never kept). UI preferences are kept in this browser's localStorage. None of this leaves your device, and we cannot access it. Passwords are never stored.</li><li><strong>Transfers</strong> — The extension makes no network requests, and HTML files it saves or exports load no external resources. The web AI feature only copies a question to your clipboard; what you paste into an AI site is governed by that service's policy. No ads, analytics or tracking; no sale or sharing of data.</li><li><strong>Deletion</strong> — Delete your saved files. A recovery copy is cleared when you save the map to a file; all recovery copies and preferences are removed when you uninstall the extension or clear the browser's site data.</li><li><strong>Changes</strong> — Updates will be posted on this page with a new effective date.</li></ul>"
   }
 };
 

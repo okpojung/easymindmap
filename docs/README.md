@@ -271,6 +271,6 @@ docs/
 | 27b | `docs/04-extensions/publish/27b-paid-implementation.md` | PAID_IMPL | 유료공개 구현 설계 — 표·엔드포인트·화면·판매 처리기 추상화·오픈코어 경계·순서 |
 | 28 | `docs/04-extensions/project/28-wbs.md` | WBS | WBS 모드 (일정/마일스톤/진척률) |
 | 29 | `docs/04-extensions/project/29-resource.md` | RESOURCE | 리소스 할당 (담당자/역할/공수) |
-| 30 | `docs/04-extensions/integrations/30-obsidian-integration.md` | OBSIDIAN | Obsidian Vault 양방향 Markdown 동기화 |
+| 30 | `docs/04-extensions/integrations/30-obsidian-integration.md` | OBSIDIAN | Obsidian 플러그인 — 같은 노트를 글과 맵 두 화면으로 |
 | 31 | `docs/04-extensions/integrations/31-redmine-integration.md` | REDMINE | Redmine 이슈 양방향 동기화 |
 | 32 | `docs/04-extensions/settings/32-settings.md` | SETTINGS | 사용자 설정 (테마/언어/레이아웃/API Key) |

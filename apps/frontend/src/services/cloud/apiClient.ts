@@ -625,6 +625,8 @@ export const cloudApi = {
   deleteMcpTokenRecord: (id: string) => req<void>('DELETE', `/mcp-tokens/${id}/record`),
   /** 로그인 직후 한 번 — 서버가 **그때의 IP** 를 남긴다 (2026-08-14).
    *  IP 는 보내지 않는다: 서버가 요청에서 직접 본다(위조 방지). */
+  /** 소셜 로그인 중 GoTrue /settings 에 나오지 않는 것(네이버 = 커스텀 공급자)이 켜졌나 — 로그인 전이라 anon */
+  socialProviders: () => req<{ naver: boolean }>('GET', '/auth/social', undefined, true),
   recordLogin: async () =>
     req<{ recorded: boolean }>('POST', '/account/login-event', await getClientInfo()),
 

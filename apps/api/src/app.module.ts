@@ -17,6 +17,7 @@ import { McpModule } from './mcp/mcp.module';
 import { MailModule } from './mail/mail.module';
 import { NodesModule } from './nodes/nodes.module';
 import { PublishModule } from './publish/publish.module';
+import { SocialModule } from './social/social.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { PublishModule } from './publish/publish.module';
     // `AUTH_MODE=dev` 배포에서는 라우트는 있어도 가드가 전부 막는다(§3).
     McpModule,
     PublishModule,
+    SocialModule,
     // 유료 확장 — 유료 모듈이 있으면 그것을, 없으면 스텁을 등록한다
     // (open-core-boundary.md §4). **이음매는 이 한 줄뿐이다** — 유료
     // 기능이 늘어도 여기는 안 바뀐다. 없는 것이 공개판의 정상 동작이다.

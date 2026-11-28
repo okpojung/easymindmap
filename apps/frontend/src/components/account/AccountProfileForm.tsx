@@ -10,6 +10,7 @@
 // 지워진다) 언제나 둘 다 실어 보낸다. 읽기가 실패했으면 "등록되지 않음"이
 // 아니라 **실패한 이유**를 보여 준다 — 둘은 다른 상황이다.
 
+import { LinkedAccounts } from './LinkedAccounts';
 import { ProPhoneVerification } from '@pro';
 import { useEffect, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
@@ -209,6 +210,8 @@ function AccountFormFields({ t, onSaved, onDeleteAccount, identity }: FormProps 
         <div data-testid="profile-email" style={ro}>{session?.email ?? '—'}</div>
         <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 4 }}>{tr('auth.profile.emailNote')}</div>
       </div>
+      {/* 로그인 연결 — 카카오·네이버·구글 (2026-11-28) */}
+      <LinkedAccounts t={t} />
       <div>
         <div style={label}>{tr('auth.profile.phone')}</div>
         <div data-testid="profile-phone-fields" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>

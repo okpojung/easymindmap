@@ -31,6 +31,7 @@ import { DraftRecoveryBanner } from '@/components/cloud/DraftRecoveryBanner';
 import { OutageBanner } from '@/components/cloud/OutageBanner';
 import { UploadProgress } from '@/components/cloud/UploadProgress';
 import { WelcomeScreen } from '@/components/auth/WelcomeScreen';
+import { SocialSignupGate } from '@/components/auth/CompleteSocialSignup';
 import { GuestBrowserNotice } from '@/components/auth/GuestBrowserNotice';
 import { MapBrowser } from '@/components/cloud/MapBrowser';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
@@ -650,6 +651,8 @@ export function EditorPage() {
           확대/축소는 아무 일도 하지 않고, '문서 116B · 첨부 0개' 는 열려 있지도
           않은 빈 문서의 무게였다. 폰에서 Guest 는 문서함 화면에도 패널(새 맵)
           서랍이 필요해 그 문만 남긴다. */}
+      {/* 소셜 첫 가입이면 이름·만 14세 확인 (2026-11-28) */}
+      <SocialSignupGate t={t} />
       {showStatusBar && (
       <BottomStatusBar
         t={t}

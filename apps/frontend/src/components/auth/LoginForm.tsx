@@ -13,6 +13,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { useAuthStore } from '@/stores/authStore';
 import { AuthError } from '@/services/cloud/supabaseAuth';
 import { useTr } from '@/i18n';
+import { SocialButtons } from './SocialButtons';
 
 export interface SocialProvider {
   id: string;
@@ -188,7 +189,7 @@ export function LoginForm({
         >{tr('auth.login.forgot')}</button>
       )}
 
-      {/* 준비 중인 로그인 방식 — 자리를 미리 보여 준다 (넓은 형태에서만) */}
+      {/* 카카오·네이버·구글 (2026-11-28) — 켜진 것은 브랜드 버튼, 아직 꺼진 것은 '준비 중' (넓은 형태에서만) */}
       {!compact && (
         <div data-testid="login-providers" style={{ marginTop: 18 }}>
           <div style={{
@@ -199,34 +200,7 @@ export function LoginForm({
             {tr('auth.login.otherWays')}
             <span style={{ flex: 1, height: 1, background: t.divider }} />
           </div>
-          {SOCIAL_PROVIDERS.map((p) => (
-            <button
-              key={p.id}
-              data-testid={`login-provider-${p.id}`}
-              disabled={!p.enabled}
-              title={p.enabled ? tr(p.labelKey) : tr('auth.login.providerSoon', { name: tr(p.labelKey) })}
-              style={{
-                width: '100%', height: 38, marginBottom: 7, borderRadius: 7,
-                border: `1px solid ${t.border}`, background: t.surface,
-                color: p.enabled ? t.text : t.textSubtle,
-                cursor: p.enabled ? 'pointer' : 'default',
-                display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px',
-                fontSize: 13, fontWeight: 600,
-              }}
-            >
-              <span style={{
-                width: 20, textAlign: 'center', fontWeight: 800,
-                color: p.enabled ? p.color : t.textSubtle,
-              }}>{p.mark}</span>
-              <span style={{ flex: 1, textAlign: 'left' }}>{tr(p.labelKey)}</span>
-              {!p.enabled && (
-                <span style={{
-                  fontSize: 10, fontWeight: 600, color: t.textSubtle,
-                  border: `1px solid ${t.border}`, borderRadius: 8, padding: '1px 7px',
-                }}>{tr('common.comingSoon')}</span>
-              )}
-            </button>
-          ))}
+          <SocialButtons t={t} />
 
           {/* Guest 체험 (2026-08-04) — 가입 없이 로컬 에디터만.
               서버 저장·불러오기·첨부·API 키 AI 는 막히고, MD/HTML

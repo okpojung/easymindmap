@@ -10,6 +10,8 @@ import { matchProRoute } from '@pro';
 import { captureEntryIntent } from '@/services/entryIntent';
 import { GanttWindowPage } from '@/pages/GanttWindowPage';
 import { MdEditorWindowPage } from '@/pages/MdEditorWindowPage';
+import { SocialCallbackPage } from '@/pages/SocialCallbackPage';
+import { CALLBACK_PATH } from '@/services/cloud/socialAuth';
 
 // 화면 고르기 — 라우터를 들이지 않고 **주소만** 본다 (2026-08-13 · 08-14).
 //
@@ -48,6 +50,9 @@ const publishId = publishIdFromPath(window.location.pathname);
 // 같다 — 여기 온 사람은 맵을 그리러 온 것이 아니라 허락하러 왔다.
 const isConsent = isConsentPath(window.location.pathname);
 
+// 소셜 로그인(카카오·네이버·구글)에서 돌아오는 자리 (2026-11-28) — 에디터보다 먼저 갈라 코드를 세션으로 바꾼다
+const isSocialCallback = window.location.pathname.replace(/\/+$/, '') === CALLBACK_PATH;
+
 // 게시판 `/?board=…` (2026-10-23, 홈페이지의 [글쓰기]·[댓글 쓰기] 링크) — 유료 모듈의 '/board' 화면으로
 const routePath = window.location.pathname.replace(/\/+$/, '') === '' && new URLSearchParams(window.location.search).has('board')
   ? '/board' : window.location.pathname;
@@ -61,7 +66,9 @@ const mdEdit = rootQs?.get('mdedit') && rootQs.get('key') ? { tab: rootQs.get('m
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {isConsent
+    {isSocialCallback
+      ? <SocialCallbackPage />
+      : isConsent
       ? <OAuthConsentPage />
       : publishId
         ? <PublicMapPage publishId={publishId} />

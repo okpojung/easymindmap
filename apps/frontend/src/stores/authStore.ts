@@ -54,6 +54,8 @@ interface AuthState {
   /** 가입 — 세션이 곧바로 오면 로그인까지 완료. false = 이메일 확인 필요 */
   signUp: (email: string, password: string) => Promise<{ signedIn: boolean; identity: AuthIdentity }>;
   signOut: () => Promise<void>;
+  /** 소셜 로그인(카카오·네이버·구글)으로 받은 세션 — 일반 로그인과 같이 기록한다 (2026-11-28) */
+  adoptSocialSession: (s: AuthSession) => void;
   setSession: (s: AuthSession | null) => void;
   enterGuest: () => void;
   /** Guest 종료 → 로그인 화면으로 (가입 유도 통로) */
@@ -112,6 +114,11 @@ export const useAuthStore = create<AuthState>()(
           try { clearAiKeysOnLogout(); } catch { /* best-effort local cleanup */ }
         }
         await Promise.all([drafts, cur && supabaseAuth.signOut(cur.accessToken)]);
+      },
+
+      adoptSocialSession: (s) => {
+        get().setSession(s);
+        noteLogin({ generation: get().generation, userId: s.userId });
       },
 
       setSession: (s) => {

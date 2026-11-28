@@ -30,6 +30,7 @@ import {
   COUNTRIES, DEFAULT_COUNTRY, countryName, findCountries, type Country,
 } from '@/utils/countryCodes';
 import { formatSignupPhone } from './signupPhoneInput';
+import { SocialButtons } from './SocialButtons';
 import { useLang, useTr } from '@/i18n';
 import { rich } from '@/i18n/rich';
 
@@ -223,6 +224,16 @@ export function SignupForm({
       <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>{tr('auth.signup.title')}</div>
       <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.6, marginBottom: 18 }}>
         {rich(tr('auth.signup.intro'))}
+      </div>
+
+      {/* 간편 가입 — 카카오·네이버·구글 (2026-11-28). 처음 들어오면 이름·만 14세 확인을 받는다(CompleteSocialSignup) */}
+      <div data-testid="signup-social" style={{ marginBottom: 14 }}>
+        <SocialButtons t={t} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: t.textSubtle, fontSize: 11, margin: '8px 0 2px' }}>
+          <span style={{ flex: 1, height: 1, background: t.divider }} />
+          {tr('auth.signup.orEmail')}
+          <span style={{ flex: 1, height: 1, background: t.divider }} />
+        </div>
       </div>
 
       {/* ① 이메일 + 인증 */}

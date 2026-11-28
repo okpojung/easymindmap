@@ -121,6 +121,12 @@ export interface AppEnv {
   // ── 버전 정리 워커 (2026-09-06, 13a §2 · src/versions/) ─────────────
   // 끄면 아무것도 지우지 않는다. 델타(pinned·version_days 칸)가 없어도 안 돈다.
   VERSION_PRUNE_ENABLED: boolean;
+
+  /**
+   * 네이버 로그인을 켰나 (2026-11-28). GoTrue 에 custom:naver 를 등록하고 이 API 를 사용자정보
+   * 주소로 둔 배포에서만 true — 앱의 [네이버로 계속하기] 버튼과 /v1/auth/naver/userinfo 가 열린다.
+   */
+  NAVER_LOGIN_ENABLED: boolean;
   // 저장 뒤 얼마 있다가 그 맵을 정리하나 (ms). 사진 GC 보다 뒤여야 한다.
   VERSION_PRUNE_DEBOUNCE_MS: number;
   // 전체 훑기 주기 (시간). 0 = 훑지 않는다(저장 뒤 정리만).
@@ -226,6 +232,7 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
   }
 
   const VERSION_PRUNE_ENABLED = String(raw.VERSION_PRUNE_ENABLED ?? 'true') !== 'false';
+  const NAVER_LOGIN_ENABLED = String(raw.NAVER_LOGIN_ENABLED ?? '').trim().toLowerCase() === 'true';
   const VERSION_PRUNE_DEBOUNCE_MS = Number(raw.VERSION_PRUNE_DEBOUNCE_MS ?? 60_000);
   const VERSION_PRUNE_SWEEP_HOURS = Number(raw.VERSION_PRUNE_SWEEP_HOURS ?? 24);
   const VERSION_PRUNE_GRACE_DAYS = Number(raw.VERSION_PRUNE_GRACE_DAYS ?? 7);
@@ -277,6 +284,7 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     GOTRUE_DATABASE_URL: String(raw.GOTRUE_DATABASE_URL ?? ''),
     AI_KEY_SECRET,
     VERSION_PRUNE_ENABLED,
+    NAVER_LOGIN_ENABLED,
     VERSION_PRUNE_DEBOUNCE_MS,
     VERSION_PRUNE_SWEEP_HOURS,
     VERSION_PRUNE_GRACE_DAYS,

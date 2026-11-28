@@ -48,6 +48,21 @@ export interface AuthSession {
   email: string;
 }
 
+/** GoTrue 사용자 — 필요한 칸만 */
+export interface GoTrueIdentity {
+  identity_id: string;
+  provider: string;
+  identity_data?: { email?: string; name?: string; full_name?: string; nickname?: string };
+  created_at?: string;
+}
+export interface GoTrueUser {
+  id: string;
+  email?: string;
+  app_metadata?: { provider?: string; providers?: string[] };
+  user_metadata?: { full_name?: string; name?: string; nickname?: string; avatar_url?: string };
+  identities?: GoTrueIdentity[];
+}
+
 export class AuthError extends Error {
   constructor(public status: number, message: string, public code?: string) {
     super(message);
@@ -131,6 +146,30 @@ export const supabaseAuth = {
       refresh_token: refreshToken,
     });
     return toSession(r, '');
+  },
+
+  /**
+   * 소셜 로그인 (2026-11-28) — 공급자에서 돌아온 코드 + 처음에 만든 검증 문자열(PKCE)로 세션을 받는다.
+   * 코드만 훔쳐서는 세션을 못 받는다(검증 문자열은 이 탭의 sessionStorage 에만 있었다).
+   */
+  async exchangeCode(authCode: string, codeVerifier: string): Promise<AuthSession> {
+    const r = await goTrue<GoTrueTokenResponse>('/token?grant_type=pkce', { auth_code: authCode, code_verifier: codeVerifier });
+    return toSession(r, '');
+  },
+
+  /** 지금 사용자와 연결된 로그인 수단(identities) — 계정 프로필 > 로그인 연결 */
+  async getUser(accessToken: string): Promise<GoTrueUser> {
+    let res: Response;
+    try {
+      res = await fetch(authUrl('/user'), { headers: authHeaders(accessToken), cache: 'no-store' });
+    } catch { throw new AuthError(0, tr('auth.error.unreachable')); }
+    if (!res.ok) throw new AuthError(res.status, tr('auth.error.failed', { status: res.status }));
+    return res.json() as Promise<GoTrueUser>;
+  },
+
+  /** 로그인 수단 하나 해제 — 마지막 하나는 GoTrue 가 거절한다(single_identity_not_deletable) */
+  async unlinkIdentity(accessToken: string, identityId: string): Promise<void> {
+    await goTrue<void>('/user/identities/' + encodeURIComponent(identityId), {}, accessToken, 'DELETE');
   },
 
   /** 서버 측 세션 무효화 — 실패해도 로컬 로그아웃은 진행한다 */

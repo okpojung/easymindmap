@@ -3,6 +3,7 @@
 //   카카오 = 노랑(#FEE500) 바탕 · 검정 말풍선 · 검정 85% 글자
 //   네이버 = 초록(#03C75A) 바탕 · 흰 N · 흰 글자
 //   구글   = 흰 바탕 · 회색(#747775) 테두리 · 4색 G · #1F1F1F 글자
+//   MS     = 흰 바탕 · 회색(#8C8C8C) 테두리 · 4색 사각 로고 · #5E5E5E 글자 (Microsoft 로그인 브랜딩 지침)
 // 켜지지 않은 공급자(GoTrue·API 설정 전)는 예전처럼 회색 '준비 중'으로 둔다.
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
@@ -24,12 +25,19 @@ export const SOCIAL_LOGOS: Record<SocialId, ReactNode> = {
       <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
     </svg>
   ),
+  microsoft: (
+    <svg width="17" height="17" viewBox="0 0 21 21" aria-hidden="true">
+      <rect x="1" y="1" width="9" height="9" fill="#F25022" /><rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
+      <rect x="1" y="11" width="9" height="9" fill="#00A4EF" /><rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+    </svg>
+  ),
 };
 
 export const SOCIAL_BRAND: Record<SocialId, { bg: string; fg: string; border: string }> = {
   kakao: { bg: '#FEE500', fg: 'rgba(0,0,0,0.85)', border: '#FEE500' },
   naver: { bg: '#03C75A', fg: '#FFFFFF', border: '#03C75A' },
   google: { bg: '#FFFFFF', fg: '#1F1F1F', border: '#747775' },
+  microsoft: { bg: '#FFFFFF', fg: '#5E5E5E', border: '#8C8C8C' },
 };
 
 /** 켜진 공급자 — 첫 그림에서는 모두 꺼진 것으로 두고 읽히면 켠다 */
@@ -81,7 +89,7 @@ export function SocialButtons({ t, returnTo, height = 40 }: { t: ThemeTokens; re
             style={{
               ...style, width: '100%', height, marginBottom: 7, borderRadius: 8,
               display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px',
-              fontSize: 13.5, fontWeight: 600, fontFamily: id === 'google' && on ? "'Roboto', 'Pretendard Variable', sans-serif" : 'inherit',
+              fontSize: 13.5, fontWeight: 600, fontFamily: id === 'google' && on ? "'Roboto', 'Pretendard Variable', sans-serif" : id === 'microsoft' && on ? "'Segoe UI', 'Pretendard Variable', sans-serif" : 'inherit',
             }}
           >
             <span style={{

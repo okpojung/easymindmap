@@ -20,7 +20,8 @@ class MemStore implements Storage {
 }
 
 // 공급자 이름
-eq(GOTRUE_PROVIDER, { kakao: 'kakao', naver: 'custom:naver', google: 'google' }, 'gotrue provider ids');
+eq(GOTRUE_PROVIDER, { kakao: 'kakao', naver: 'custom:naver', google: 'google', microsoft: 'azure' }, 'gotrue provider ids');
+eq([socialIdOf('azure'), socialIdOf('microsoft')], ['microsoft', 'microsoft'], 'socialIdOf microsoft');
 eq([socialIdOf('kakao'), socialIdOf('custom:naver'), socialIdOf('google'), socialIdOf('email'), socialIdOf(undefined)],
   ['kakao', 'naver', 'google', null, null], 'socialIdOf');
 

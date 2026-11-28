@@ -7,20 +7,23 @@
 //   3) SocialCallbackPage 가 code + verifier 로 /token?grant_type=pkce → 세션.
 // 계정 연결(로그인한 상태에서 [연결])은 /user/identities/authorize 로 같은 흐름을 탄다.
 //
-// 공급자 이름: 구글·카카오는 GoTrue 기본 공급자, 네이버는 커스텀 공급자 'custom:naver'.
+// 공급자 이름: 구글·카카오·Microsoft(azure)는 GoTrue 기본 공급자, 네이버는 커스텀 공급자 'custom:naver'.
+// Microsoft 는 이메일을 받으려면 scopes=email 을 붙여야 한다(GoTrue 기본은 openid 만).
 import { authUrl, authHeaders, AuthError } from './supabaseAuth';
 import { tr } from '@/i18n';
 
-export type SocialId = 'kakao' | 'naver' | 'google';
+export type SocialId = 'kakao' | 'naver' | 'google' | 'microsoft';
 /** 화면 순서 — 2026-08-04 사용자 결정 (카카오 → 네이버 → Google) */
-export const SOCIAL_IDS: SocialId[] = ['kakao', 'naver', 'google'];
-export const GOTRUE_PROVIDER: Record<SocialId, string> = { kakao: 'kakao', naver: 'custom:naver', google: 'google' };
+// 2026-11-28 Microsoft(Office 365·Outlook 계정) 추가 — 네 번째
+export const SOCIAL_IDS: SocialId[] = ['kakao', 'naver', 'google', 'microsoft'];
+export const GOTRUE_PROVIDER: Record<SocialId, string> = { kakao: 'kakao', naver: 'custom:naver', google: 'google', microsoft: 'azure' };
 
 /** GoTrue 의 공급자 이름 → 우리 이름 (이메일 등은 null) */
 export function socialIdOf(provider: string | undefined): SocialId | null {
   const p = String(provider ?? '').toLowerCase();
   if (p === 'kakao') return 'kakao';
   if (p === 'google') return 'google';
+  if (p === 'azure' || p === 'microsoft') return 'microsoft';
   if (p === 'custom:naver' || p === 'naver') return 'naver';
   return null;
 }
@@ -124,6 +127,7 @@ export async function beginSocial(provider: SocialId, opts: {
     code_challenge: challenge,
     code_challenge_method: 's256',
   });
+  if (provider === 'microsoft') qs.set('scopes', 'email profile');
   if (mode === 'login') {
     window.location.assign(authUrl('/authorize?' + qs.toString()));
     return;
@@ -151,7 +155,7 @@ let availability: Promise<SocialAvailability> | null = null;
  */
 export function loadSocialAvailability(): Promise<SocialAvailability> {
   if (availability) return availability;
-  const none: SocialAvailability = { kakao: false, naver: false, google: false };
+  const none: SocialAvailability = { kakao: false, naver: false, google: false, microsoft: false };
   availability = (async () => {
     const out = { ...none };
     try {
@@ -160,6 +164,7 @@ export function loadSocialAvailability(): Promise<SocialAvailability> {
         const s = (await r.json()) as { external?: Record<string, boolean> };
         out.google = s.external?.google === true;
         out.kakao = s.external?.kakao === true;
+        out.microsoft = s.external?.azure === true;
         out.naver = s.external?.['custom:naver'] === true || s.external?.naver === true;
       }
     } catch { /* 인증 서버에 못 닿으면 모두 꺼진 것으로 */ }
@@ -171,7 +176,7 @@ export function loadSocialAvailability(): Promise<SocialAvailability> {
     }
     return out;
   })();
-  availability.then((a) => { if (!a.google && !a.kakao && !a.naver) availability = null; }, () => { availability = null; });
+  availability.then((a) => { if (!a.google && !a.kakao && !a.naver && !a.microsoft) availability = null; }, () => { availability = null; });
   return availability;
 }
 

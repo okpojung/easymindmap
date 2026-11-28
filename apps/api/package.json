@@ -26,7 +26,7 @@
     "test:attachment-content": "node test/attachment-content.test.mjs",
     "test:proxy-addr": "node --test test/proxy-addr-security.test.mjs",
     "test:signup-email-code": "node --test test/signup-email-code.test.mjs",
-    "test:social": "node --test test/social-naver.test.mjs",
+    "test:social": "node --test test/social-naver.test.mjs test/social-phone.test.mjs",
     "test:library-settings": "node --test test/library-settings.test.mjs"
   },
   "dependencies": {

@@ -75,6 +75,8 @@ interface GoTrueTokenResponse {
   refresh_token: string;
   expires_in: number;
   user?: { id?: string; email?: string };
+  /** 소셜(PKCE) 교환에서만 — 공급자(카카오·네이버…) 토큰. 세션에 넣지 않는다 */
+  provider_token?: string;
 }
 
 async function goTrue<T>(
@@ -153,8 +155,17 @@ export const supabaseAuth = {
    * 코드만 훔쳐서는 세션을 못 받는다(검증 문자열은 이 탭의 sessionStorage 에만 있었다).
    */
   async exchangeCode(authCode: string, codeVerifier: string): Promise<AuthSession> {
+    return (await supabaseAuth.exchangeSocialCode(authCode, codeVerifier)).session;
+  },
+
+  /**
+   * 위와 같되 공급자 토큰도 돌려준다 — 휴대폰 번호 미리 채우기(socialPhone.ts)가 **한 번** 쓰고 버린다.
+   * 세션(저장되는 것)에는 넣지 않는다.
+   */
+  async exchangeSocialCode(authCode: string, codeVerifier: string): Promise<{ session: AuthSession; providerToken: string | null }> {
     const r = await goTrue<GoTrueTokenResponse>('/token?grant_type=pkce', { auth_code: authCode, code_verifier: codeVerifier });
-    return toSession(r, '');
+    const pt = typeof r.provider_token === 'string' && r.provider_token ? r.provider_token : null;
+    return { session: toSession(r, ''), providerToken: pt };
   },
 
   /** 지금 사용자와 연결된 로그인 수단(identities) — 계정 프로필 > 로그인 연결 */

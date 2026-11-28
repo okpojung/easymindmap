@@ -11,6 +11,8 @@ import { useTr } from '@/i18n';
 import { useAuthStore } from '@/stores/authStore';
 import { supabaseAuth, AuthError } from '@/services/cloud/supabaseAuth';
 import { callbackErrorMessage, LINK_NOTICE_KEY, parseCallback, takePending } from '@/services/cloud/socialAuth';
+import { collectPhoneHint } from '@/services/cloud/socialPhone';
+import { cloudApi } from '@/services/cloud/apiClient';
 
 export function SocialCallbackPage() {
   const tr = useTr();
@@ -33,7 +35,7 @@ export function SocialCallbackPage() {
       }
       if (!pending) { setErr(tr('auth.social.expired')); return; }
       try {
-        const s = await supabaseAuth.exchangeCode(params.code, pending.v);
+        const { session: s, providerToken } = await supabaseAuth.exchangeSocialCode(params.code, pending.v);
         if (pending.mode === 'link') {
           const cur = useAuthStore.getState().session;
           if (!cur || cur.userId !== s.userId || (pending.userId && pending.userId !== s.userId)) {
@@ -45,6 +47,8 @@ export function SocialCallbackPage() {
         } else {
           useAuthStore.getState().adoptSocialSession(s);
         }
+        // 카카오·네이버 휴대폰 번호 — 가입 창·프로필을 미리 채울 뿐(저장·인증 아님). 짧게만 기다린다
+        await collectPhoneHint(pending.provider, providerToken, s.userId, cloudApi.socialPhone);
         window.location.replace(pending.returnTo || '/');
       } catch (e) {
         setErr(e instanceof AuthError ? e.message : tr('auth.social.failed'));

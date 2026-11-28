@@ -4,7 +4,8 @@
 //   · 이름 (공급자가 준 이름을 미리 채운다 — 고칠 수 있다)
 //   · 만 14세 이상 확인 — 개인정보 보호법·처리방침 §9. 이메일 가입과 **같은 규칙**이라
 //     확인 전에는 [시작하기]를 막는다. 원하지 않으면 로그아웃할 수 있다.
-// 휴대폰은 계정 프로필에서 나중에 넣는다(이메일 가입에서도 선택).
+// 휴대폰은 선택 — 카카오·네이버가 번호를 주었으면(socialPhone.ts) 미리 채워 보여 주고 고치거나
+// 지울 수 있다. 인증은 여전히 계정 프로필의 ARS. 번호가 없으면 칸을 보이지 않는다(나중에 프로필에서).
 // 띄우는 조건(SocialSignupGate): 로그인 수단이 소셜 · 프로필을 읽었고 이름이 비어 있다.
 import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
@@ -16,6 +17,8 @@ import { nameProblem } from '@/utils/profileName';
 import { cloudApi, CloudError } from '@/services/cloud/apiClient';
 import { supabaseAuth, authEnabled } from '@/services/cloud/supabaseAuth';
 import { sessionProvider, socialIdOf } from '@/services/cloud/socialAuth';
+import { clearPhoneHint, readPhoneHint } from '@/services/cloud/socialPhone';
+import { DEFAULT_COUNTRY, formatPhone } from '@/utils/countryCodes';
 
 /** 문장 속 [글](https://…) 를 링크로 — 사전 문장이 언어마다 어순이 달라 조각내지 않는다 */
 export function withLinks(text: string, color: string): ReactNode[] {
@@ -60,6 +63,11 @@ export function CompleteSocialSignup({ t }: { t: ThemeTokens }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const provider = socialIdOf(sessionProvider(session?.accessToken) ?? undefined);
+  // 공급자가 준 번호(있을 때만) — 처음 한 번 읽는다
+  const [hint] = useState(() => readPhoneHint(session?.userId));
+  const hintDial = (hint?.country ?? '').replace(/\D/g, '') || DEFAULT_COUNTRY.dial;
+  const [phone, setPhone] = useState(() => (hint ? formatPhone(hintDial, hint.number) : ''));
+  const phoneDigits = phone.replace(/\D/g, '');
 
   useEffect(() => {
     if (!session) return;
@@ -74,10 +82,15 @@ export function CompleteSocialSignup({ t }: { t: ThemeTokens }) {
   const can = !problem && ageOk && !busy;
   const submit = async () => {
     if (!can) { if (problem) setErr(problem); return; }
+    if (phoneDigits && phoneDigits.length < 6) { setErr(tr('auth.profile.phoneTooShort')); return; }
     setBusy(true); setErr(null);
     const id = captureAuthIdentity();
     try {
-      const saved = await cloudApi.saveProfile({ fullName: name.trim() });
+      const saved = await cloudApi.saveProfile({
+        fullName: name.trim(),
+        ...(hint && phoneDigits ? { phoneCountry: `+${hintDial}`, phoneNumber: phoneDigits } : {}),
+      });
+      clearPhoneHint();
       if (isAuthIdentityCurrent(id)) useProfileStore.getState().setProfile(saved, id);
     } catch (e) {
       if (isAuthIdentityCurrent(id)) setErr(e instanceof CloudError ? e.message : tr('auth.social.completeFailed'));
@@ -98,6 +111,20 @@ export function CompleteSocialSignup({ t }: { t: ThemeTokens }) {
           placeholder={tr('auth.signup.fullNamePh')} onChange={(e) => { setName(e.target.value); setErr(null); }}
           onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
           style={{ width: '100%', boxSizing: 'border-box', height: 38, padding: '0 10px', borderRadius: 7, border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.text, fontSize: 13.5, marginBottom: 12 }} />
+        {hint && (
+          <div data-testid="social-complete-phone-box" style={{ marginBottom: 12 }}>
+            <label htmlFor="social-complete-phone" style={{ fontSize: 11.5, fontWeight: 700, color: t.textMuted, display: 'block', marginBottom: 5 }}>{tr('auth.social.phoneLabel')}</label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <div style={{ flex: '0 0 auto', height: 38, display: 'flex', alignItems: 'center', padding: '0 10px', borderRadius: 7, border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.textMuted, fontSize: 13 }}>+{hintDial}</div>
+              <input id="social-complete-phone" data-testid="social-complete-phone" value={phone} inputMode="tel" autoComplete="tel"
+                onChange={(e) => { setPhone(formatPhone(hintDial, e.target.value)); setErr(null); }}
+                style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', height: 38, padding: '0 10px', borderRadius: 7, border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.text, fontSize: 13.5 }} />
+            </div>
+            <div style={{ fontSize: 11, color: t.textSubtle, lineHeight: 1.5, marginTop: 4 }}>
+              {tr('auth.social.phoneFrom', { provider: tr(`auth.social.name.${hint.provider}`) })}
+            </div>
+          </div>
+        )}
         <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, lineHeight: 1.5, cursor: 'pointer', marginBottom: 6 }}>
           <input type="checkbox" data-testid="social-complete-age" checked={ageOk} onChange={(e) => setAgeOk(e.target.checked)} style={{ marginTop: 2 }} />
           <span>{rich(tr('auth.signup.age'))} <span style={{ opacity: 0.7 }}>{tr('auth.signup.ageNote')}</span></span>

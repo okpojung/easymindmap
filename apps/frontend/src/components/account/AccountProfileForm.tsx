@@ -11,6 +11,7 @@
 // 아니라 **실패한 이유**를 보여 준다 — 둘은 다른 상황이다.
 
 import { LinkedAccounts } from './LinkedAccounts';
+import { clearPhoneHint, readPhoneHint, type PhoneHint } from '@/services/cloud/socialPhone';
 import { ProPhoneVerification } from '@pro';
 import { useEffect, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
@@ -49,6 +50,8 @@ function AccountFormFields({ t, onSaved, onDeleteAccount, identity }: FormProps 
   const name = editedName ?? profile?.fullName ?? '';
   const [dial, setDial] = useState((profile?.phoneCountry ?? '').replace(/\D/g, '') || DEFAULT_COUNTRY.dial);
   const [phone, setPhone] = useState(profile?.phoneNumber ?? '');
+  // 카카오·네이버에서 받은 번호로 빈 칸을 채웠는가 (2026-11-28) — 저장 전 안내용
+  const [phoneFrom, setPhoneFrom] = useState<PhoneHint['provider'] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 프로필 사진/아바타 (2026-09-08) — undefined = 서버 값 그대로, null = 지움
@@ -65,7 +68,19 @@ function AccountFormFields({ t, onSaved, onDeleteAccount, identity }: FormProps 
     const cc = (profile?.phoneCountry ?? '').replace(/\D/g, '');
     setDial(cc || DEFAULT_COUNTRY.dial);
     setPhone(profile?.phoneNumber ? formatPhoneInput(cc || DEFAULT_COUNTRY.dial, profile.phoneNumber) : '');
-  }, [profile?.phoneCountry, profile?.phoneNumber]);
+    setPhoneFrom(null);
+    // 등록된 번호가 없고 방금 카카오·네이버를 연결했다면 그 번호를 **채워만** 둔다(저장은 [저장], 인증은 ARS)
+    if (!profile?.phoneNumber && profile) {
+      const h = readPhoneHint(session?.userId);
+      if (h) {
+        const d = h.country.replace(/\D/g, '') || DEFAULT_COUNTRY.dial;
+        setDial(d);
+        setPhone(formatPhoneInput(d, h.number));
+        setPhoneFrom(h.provider);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 프로필의 다른 칸(사진 등)이 바뀌어도 입력 중인 번호를 덮지 않는다
+  }, [!!profile, profile?.phoneCountry, profile?.phoneNumber, session?.userId]);
 
   const phoneDigits = phone.replace(/\D/g, '');
   const savedDigits = (profile?.phoneNumber ?? '').replace(/\D/g, '');
@@ -91,6 +106,7 @@ function AccountFormFields({ t, onSaved, onDeleteAccount, identity }: FormProps 
         ...(avatarDirty ? { avatar: avatar ?? null } : {}),
       });
       if (!current()) return;
+      if (phoneFrom) clearPhoneHint();
       setProfile(p, identity);
       if (!current()) return;
       setName(null);
@@ -242,7 +258,9 @@ function AccountFormFields({ t, onSaved, onDeleteAccount, identity }: FormProps 
         </div>
         <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 4 }}>
           <ProPhoneVerification key={[session?.userId,dial,phoneDigits].join(':')} mode="profile" country={dial} phone={phoneDigits} verified={!!profile?.phoneVerifiedAt && !changedVerified} disabled={busy || !loaded} onBusy={setPhoneBusy} onSuccess={async () => { if (current()) await load({ force: true }); }} />
-          {loaded && !savedDigits && !loadError ? tr('auth.profile.phoneEmpty') : tr('auth.profile.phoneNote')}
+          {phoneFrom && phoneDigits && !savedDigits
+            ? <span data-testid="profile-phone-from-social">{tr('auth.profile.phoneFromSocial', { provider: tr(`auth.social.name.${phoneFrom}`) })}</span>
+            : loaded && !savedDigits && !loadError ? tr('auth.profile.phoneEmpty') : tr('auth.profile.phoneNote')}
         </div>
       </div>
       {error && (
